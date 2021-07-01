@@ -1,3 +1,4 @@
+from sqlalchemy.sql.expression import and_
 from materialized import create_mat_view
 from oso import Oso
 from sqlalchemy_oso import register_models
@@ -10,56 +11,64 @@ from models import Base
 from oso_partial_helper import partial_query
 
 
-class Relation(Base):
-    __tablename__ = "relations"
+class RelationTuple(Base):
+    __tablename__ = "relation_tuples"
 
     id = Column(Integer, primary_key=True)
-    namespace = Column(String)
-    key = Column(Integer, nullable=True)
+    source_key = Column(String)
+    source_namespace = Column(String)
+    source_relation = Column(String, nullable=True)
     relation = Column(String)
+    target_key = Column(String)
+    target_namespace = Column(String)
 
     @staticmethod
-    def from_pair(relation, value):
-        return Relation(namespace=value.__tablename__, key=value.id, relation=relation)
+    def new(source, relation, target, source_relation=None):
+        assert isinstance(source, Base)
+        assert isinstance(target, Base)
 
+        source_key = str(source.id)
+        source_namespace = source.__tablename__
+        target_key = target.id
+        target_namespace = target.__tablename__
 
-class Assigned(Base):
-    __tablename__ = "assigned"
-
-    id = Column(Integer, primary_key=True)
-    namespace = Column(String)
-    key = Column(Integer, nullable=True)
-    relation_id = Column(Integer, ForeignKey("relations.id"))
-    relation = relationship("Relation", backref="assigned", lazy=True)
-
-    @staticmethod
-    def from_pair(object, relation):
-        return Assigned(
-            namespace=object.__tablename__, key=object.id, relation=relation
+        return RelationTuple(
+            source_key=source_key,
+            source_namespace=source_namespace,
+            source_relation=source_relation,
+            relation=relation,
+            target_key=target_key,
+            target_namespace=target_namespace,
         )
 
 
-RELATIONS = []
+# class Relation(Base):
+#     __tablename__ = "relations"
+
+#     id = Column(Integer, primary_key=True)
+#     namespace = Column(String)
+#     key = Column(Integer, nullable=False)
+#     relation = Column(String)
+
+#     @staticmethod
+#     def from_pair(relation, value):
+#         return Relation(namespace=value.__tablename__, key=value.id, relation=relation)
 
 
-def add_relation(**relation):
-    RELATIONS.add({**relation})
+# class Assigned(Base):
+#     __tablename__ = "assigned"
 
+#     id = Column(Integer, primary_key=True)
+#     namespace = Column(String)
+#     key = Column(Integer, nullable=False)
+#     relation_id = Column(Integer, ForeignKey("relations.id"))
+#     relation = relationship("Relation", backref="assigned", lazy=True)
 
-def _zanzibar_query(relation, object):
-    ### query to find everything with `relation` to `object`
-
-    # filter = self.gen_filter(relation, object)
-    cte = select([Assigned.__table__]).join(Relation).cte("cte", recursive=True)
-
-    recursive_step = (
-        self.session.query(Assigned)
-        .join(cte, Assigned.relation_id == cte.c.key)
-        .filter(cte.c.namespace == "relations")
-    )
-
-    cte = cte.union(recursive_step)
-    return cte
+#     @staticmethod
+#     def from_pair(object, relation):
+#         return Assigned(
+#             namespace=object.__tablename__, key=object.id, relation=relation
+#         )
 
 
 class Zanzibar:
@@ -73,7 +82,7 @@ class Zanzibar:
 
     def gen_filter(self, relation, object):
         filter = partial_query(
-            self.oso, self.session, "assigned", relation, object, assigned=Assigned
+            self.oso, self.session, "assigned", relation, object, tuple=RelationTuple
         )
         return filter
 
@@ -82,16 +91,20 @@ class Zanzibar:
 
         filter = self.gen_filter(relation, object)
         cte = (
-            self.session.query(Assigned)
-            .join(Relation)
-            .filter(filter)
-            .cte("cte", recursive=True)
+            self.session.query(RelationTuple).filter(filter).cte("cte", recursive=True)
         )
 
         recursive_step = (
-            self.session.query(Assigned)
-            .join(cte, Assigned.relation_id == cte.c.key)
-            .filter(cte.c.namespace == "relations")
+            # join all tuples where the sources have the relationship
+            # with the target
+            self.session.query(RelationTuple).join(
+                cte,
+                and_(
+                    cte.c.source_key == RelationTuple.target_key,
+                    cte.c.source_namespace == RelationTuple.target_namespace,
+                    cte.c.source_relation == RelationTuple.relation,
+                ),
+            )
         )
 
         cte = cte.union(recursive_step)
@@ -105,7 +118,7 @@ class Zanzibar:
 
         relations = (
             self.session.query(model)
-            .join(cte, model.id == cte.c.key)
-            .filter(cte.c.namespace == model.__tablename__)
+            .join(cte, model.id == cte.c.source_key)
+            .filter(cte.c.source_namespace == model.__tablename__)
         )
         return relations

@@ -1,9 +1,7 @@
-from sqlalchemy import create_engine
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
-engine = create_engine("sqlite:///relations.db", echo=True)
 
 
 class Organization(Base):

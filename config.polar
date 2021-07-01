@@ -21,3 +21,12 @@ relation(_: Repository, "contributor", child) if
             relation: "member"
         }
     ];
+
+relation(_: Issue, "parent");
+relation(
+    _: Issue, "permission:close",
+    {
+        parent: { resource: Repository, relation: "parent" },
+        relation: "contributor"
+    }
+);

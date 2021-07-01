@@ -31,7 +31,7 @@ def partial_query(oso, session, rule_name, *args, prefix=True, **partial_types):
         has_result = True
 
         resource_partial = result["bindings"][k]
-        filter = partial_to_filter(
+        (filter, _) = partial_to_filter(
             resource_partial,
             session,
             model,
