@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Boolean, Column, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
@@ -40,6 +40,11 @@ class Issue(Base):
     __tablename__ = "issues"
 
     id = Column(Integer, primary_key=True)
-    name = Column(String)
+    title = Column(String)
+    body = Column(Text)
+    closed = Column(Boolean, default=False)
+
     # repository_id = Column(Integer, ForeignKey("repositories.id"))
     # repository = relationship("Repository", backref="issues", lazy=True)
+    # reporter_id = Column(Integer, ForeignKey("users.id"))
+    # reporter = relationship("User", backref="issues_created", lazy=True)

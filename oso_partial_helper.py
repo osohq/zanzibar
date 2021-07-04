@@ -31,12 +31,14 @@ def partial_query(oso, session, rule_name, *args, prefix=True, **partial_types):
         has_result = True
 
         resource_partial = result["bindings"][k]
+        # print(resource_partial)
         (filter, _) = partial_to_filter(
             resource_partial,
             session,
             model,
             get_model=oso.get_class,
         )
+        # print(filter)
         if combined_filter is None:
             combined_filter = filter
         else:

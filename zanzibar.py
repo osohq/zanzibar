@@ -1,74 +1,52 @@
+from polar.variable import Variable
 from sqlalchemy.sql.expression import and_
-from materialized import create_mat_view
 from oso import Oso
 from sqlalchemy_oso import register_models
 
 from sqlalchemy import Column, Integer, String, select, union_all
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql.schema import ForeignKey
+from sqlalchemy.sql.schema import Index
 
 from models import Base
 from oso_partial_helper import partial_query
 
 
 class RelationTuple(Base):
-    __tablename__ = "relation_tuples"
+    __tablename__ = "relations"
 
     id = Column(Integer, primary_key=True)
-    source_key = Column(String)
-    source_namespace = Column(String)
-    source_relation = Column(String, nullable=True)
+    subject_key = Column(Integer)
+    subject_namespace = Column(String)
+    subject_relation = Column(String, nullable=True)
     relation = Column(String)
-    target_key = Column(String)
-    target_namespace = Column(String)
+    object_key = Column(Integer)
+    object_namespace = Column(String)
 
     @staticmethod
-    def new(source, relation, target, source_relation=None):
-        assert isinstance(source, Base)
-        assert isinstance(target, Base)
+    def new(subject, relation, object, subject_relation=None):
+        assert isinstance(subject, Base)
+        assert isinstance(object, Base)
 
-        source_key = str(source.id)
-        source_namespace = source.__tablename__
-        target_key = target.id
-        target_namespace = target.__tablename__
+        subject_key = str(subject.id)
+        subject_namespace = subject.__tablename__
+        object_key = object.id
+        object_namespace = object.__tablename__
 
         return RelationTuple(
-            source_key=source_key,
-            source_namespace=source_namespace,
-            source_relation=source_relation,
+            subject_key=subject_key,
+            subject_namespace=subject_namespace,
+            subject_relation=subject_relation,
             relation=relation,
-            target_key=target_key,
-            target_namespace=target_namespace,
+            object_key=object_key,
+            object_namespace=object_namespace,
         )
 
+    # Indexes
 
-# class Relation(Base):
-#     __tablename__ = "relations"
-
-#     id = Column(Integer, primary_key=True)
-#     namespace = Column(String)
-#     key = Column(Integer, nullable=False)
-#     relation = Column(String)
-
-#     @staticmethod
-#     def from_pair(relation, value):
-#         return Relation(namespace=value.__tablename__, key=value.id, relation=relation)
-
-
-# class Assigned(Base):
-#     __tablename__ = "assigned"
-
-#     id = Column(Integer, primary_key=True)
-#     namespace = Column(String)
-#     key = Column(Integer, nullable=False)
-#     relation_id = Column(Integer, ForeignKey("relations.id"))
-#     relation = relationship("Relation", backref="assigned", lazy=True)
-
-#     @staticmethod
-#     def from_pair(object, relation):
-#         return Assigned(
-#             namespace=object.__tablename__, key=object.id, relation=relation
-#         )
+    __table_args__ = (
+        Index("subject_idx", subject_key, subject_namespace),
+        Index("object_idx", object_key, object_namespace),
+    )
 
 
 class Zanzibar:
@@ -89,20 +67,29 @@ class Zanzibar:
     def _query(self, relation, object):
         ### query to find everything with `relation` to `object`
 
+        if False:
+            res = self.oso.query_rule("relation", object, relation, Variable("child"))
+            try:
+                next(res)
+            except StopIteration:
+                raise Exception(
+                    f"There does not exist a relation defined for {relation} on {object}"
+                )
+
         filter = self.gen_filter(relation, object)
         cte = (
             self.session.query(RelationTuple).filter(filter).cte("cte", recursive=True)
         )
 
         recursive_step = (
-            # join all tuples where the sources have the relationship
-            # with the target
+            # join all tuples where the subjects have the relationship
+            # with the object
             self.session.query(RelationTuple).join(
                 cte,
                 and_(
-                    cte.c.source_key == RelationTuple.target_key,
-                    cte.c.source_namespace == RelationTuple.target_namespace,
-                    cte.c.source_relation == RelationTuple.relation,
+                    cte.c.subject_key == RelationTuple.object_key,
+                    cte.c.subject_namespace == RelationTuple.object_namespace,
+                    cte.c.subject_relation == RelationTuple.relation,
                 ),
             )
         )
@@ -118,7 +105,7 @@ class Zanzibar:
 
         relations = (
             self.session.query(model)
-            .join(cte, model.id == cte.c.source_key)
-            .filter(cte.c.source_namespace == model.__tablename__)
+            .join(cte, model.id == cte.c.subject_key)
+            .filter(cte.c.subject_namespace == model.__tablename__)
         )
         return relations
