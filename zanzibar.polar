@@ -3,9 +3,9 @@
 # type and resource
 assigned(tuple: RelationTuple, relation_type, resource) if
     relation(resource, relation_type, "this") and
-    tuple.relation = relation_type and # relation = "contributor"
+    tuple.object_predicate = relation_type and # relation = "contributor"
     tuple.object_namespace = resource.__tablename__ and # object_namespace = "repositories"
-    tuple.subject_relation = nil and # should not a relative relation
+    tuple.subject_predicate = nil and # should not a relative relation
     tuple.object_key = resource.id; # object_key = 1
 
 # this is "computed_userset" 

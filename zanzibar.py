@@ -1,5 +1,6 @@
 from typing import Tuple
 from polar.variable import Variable
+from sqlalchemy.sql.elements import or_
 from sqlalchemy.sql.expression import and_
 from oso import Oso
 from sqlalchemy_oso import register_models
@@ -16,15 +17,16 @@ class RelationTuple(Base):
     __tablename__ = "relations"
 
     id = Column(Integer, primary_key=True)
+    subject_predicate = Column(String, nullable=True)
     subject_key = Column(Integer)
     subject_namespace = Column(String)
-    subject_relation = Column(String, nullable=True)
-    relation = Column(String)
+
+    object_predicate = Column(String)
     object_key = Column(Integer)
     object_namespace = Column(String)
 
     @staticmethod
-    def new(subject, relation, object, subject_relation=None):
+    def new(subject, predicate, object, subject_predicate=None):
         assert isinstance(subject, Base)
         assert isinstance(object, Base)
 
@@ -36,8 +38,8 @@ class RelationTuple(Base):
         return RelationTuple(
             subject_key=subject_key,
             subject_namespace=subject_namespace,
-            subject_relation=subject_relation,
-            relation=relation,
+            subject_predicate=subject_predicate,
+            object_predicate=predicate,
             object_key=object_key,
             object_namespace=object_namespace,
         )
@@ -51,18 +53,18 @@ class RelationTuple(Base):
 
 
 class Tupleset:
-    def __init__(self, source_relation=None, relation=None, object=None):
-        self.source_relation = source_relation
-        self.relation = relation
+    def __init__(self, subject_predicate=None, object_predicate=None, object=None):
+        self.subject_predicate = subject_predicate
+        self.object_predicate = object_predicate
         self.object = object
 
     def as_filter(self):
         filter = RelationTuple.object_key == self.object.id
         filter = RelationTuple.object_namespace == self.object.__tablename__
-        if self.relation:
-            filter &= RelationTuple.relation == self.relation
-        if self.source_relation:
-            filter &= RelationTuple.relation == self.source_relation
+        if self.object_predicate:
+            filter &= RelationTuple.object_predicate == self.object_predicate
+        if self.subject_predicate:
+            filter &= RelationTuple.object_predicate == self.subject_predicate
         return filter
 
 
@@ -75,11 +77,25 @@ class Zanzibar:
         self.oso.load_file("config.polar")
         self.oso.load_file("zanzibar.polar")
 
+    def read_one(self, object, relation=None, subject_predicate=None):
+        filter = RelationTuple.object_key == object.id
+        filter = RelationTuple.object_namespace == object.__tablename__
+
+        # filter by relation if specified
+        if relation:
+            filter &= RelationTuple.object_predicate == relation
+
+        # filter by source relation if specified
+        if subject_predicate:
+            filter &= RelationTuple.object_predicate == subject_predicate
+
+        return self.session.query(RelationTuple).filter(filter)
+
     def read(self, *tuplesets):
-        filter = and_(True)
+        filter = and_(False)
         for tupleset in tuplesets:
             assert isinstance(tupleset, Tupleset)
-            filter &= tupleset.as_filter()
+            filter |= tupleset.as_filter()
 
         return self.session.query(RelationTuple).filter(filter)
 
@@ -114,7 +130,7 @@ class Zanzibar:
                 and_(
                     cte.c.subject_key == RelationTuple.object_key,
                     cte.c.subject_namespace == RelationTuple.object_namespace,
-                    cte.c.subject_relation == RelationTuple.relation,
+                    cte.c.subject_predicate == RelationTuple.object_predicate,
                 ),
             )
         )

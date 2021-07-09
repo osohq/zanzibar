@@ -36,7 +36,7 @@ def test_data():
             RelationTuple.new(acme, "parent", anvil),
             RelationTuple.new(alice, "admin", acme),
             RelationTuple.new(alice, "member", eng),
-            RelationTuple.new(eng, "contributor", anvil, subject_relation="member"),
+            RelationTuple.new(eng, "contributor", anvil, subject_predicate="member"),
             RelationTuple.new(bob, "maintainer", anvil),
             RelationTuple.new(anvil, "parent", issue),
             RelationTuple.new(charlie, "contributor", anvil),
@@ -54,7 +54,7 @@ def test_manual_query(test_data):
         .filter_by(
             subject_key=alice.id,
             subject_namespace="users",
-            relation="owner",
+            object_predicate="owner",
             object_key=issue.id,
             object_namespace="issues",
         )
@@ -63,7 +63,6 @@ def test_manual_query(test_data):
     )
     assert is_owner
 
-    # issue.repository.organization.users_by_role("admin")
     issues = aliased(RelationTuple)
     repos = aliased(RelationTuple)
     orgs = aliased(RelationTuple)
@@ -79,17 +78,17 @@ def test_manual_query(test_data):
             # repos that are a parent of this issue
             repos.object_key == issue.id,
             repos.object_namespace == "issues",
-            repos.relation == "parent",
+            repos.object_predicate == "parent",
             repos.subject_namespace == "repositories",
             # orgs that are a parent of the repository
             orgs.object_namespace == repos.subject_namespace,
             orgs.object_key == repos.subject_key,
-            orgs.relation == "parent",
+            orgs.object_predicate == "parent",
             orgs.subject_namespace == "organizations",
             # users that are admins of the org
             users.object_namespace == orgs.subject_namespace,
             users.object_key == orgs.subject_key,
-            users.relation == "admin",
+            users.object_predicate == "admin",
             users.subject_namespace == "users",
             users.subject_key == alice.id,
         )
@@ -108,17 +107,17 @@ def test_manual_query(test_data):
             # orgs where user is admin
             orgs.subject_namespace == "users",
             orgs.subject_key == alice.id,
-            orgs.relation == "admin",
+            orgs.object_predicate == "admin",
             orgs.object_namespace == "organizations",
             # repos for which the orgs are a parent
             repos.subject_key == orgs.object_key,
             repos.subject_namespace == orgs.object_namespace,
-            repos.relation == "parent",
+            repos.object_predicate == "parent",
             repos.object_namespace == "repositories",
             # issues for which the repos are a parent
             issues.subject_namespace == repos.object_namespace,
             issues.subject_key == repos.object_key,
-            issues.relation == "parent",
+            issues.object_predicate == "parent",
             issues.object_namespace == "issues",
             # match on this specific issue
             issues.object_key == issue.id,
@@ -131,11 +130,11 @@ def test_manual_query(test_data):
     can_close = session.query(
         RelationTuple.subject_key,
         RelationTuple.subject_namespace,
-        literal("can_close").label("relation"),
+        literal("can_close").label("object_predicate"),
     ).filter_by(
         subject_key=alice.id,
         subject_namespace="users",
-        relation="owner",
+        object_predicate="owner",
         object_key=issue.id,
         object_namespace="issues",
     )
@@ -145,12 +144,12 @@ def test_manual_query(test_data):
     can_close2 = session.query(
         RelationTuple.subject_key,
         RelationTuple.subject_namespace,
-        literal("can_close").label("relation"),
+        literal("can_close").label("object_predicate"),
     ).filter(
         tupleset.object_key == issue.id,
         tupleset.object_namespace == "issues",
-        tupleset.relation == "parent",
-        RelationTuple.relation == "maintainer",
+        tupleset.object_predicate == "parent",
+        RelationTuple.object_predicate == "maintainer",
         RelationTuple.object_key == tupleset.subject_key,
         RelationTuple.object_namespace == tupleset.subject_namespace,
         RelationTuple.subject_namespace == "users",
@@ -168,19 +167,19 @@ def test_manual_query(test_data):
     can_close3 = session.query(
         RelationTuple.subject_key,
         RelationTuple.subject_namespace,
-        literal("can_close").label("relation"),
+        literal("can_close").label("object_predicate"),
     ).filter(
         or_(
             and_(
-                RelationTuple.relation == "owner",
+                RelationTuple.object_predicate == "owner",
                 RelationTuple.object_key == issue.id,
                 RelationTuple.object_namespace == "issues",
             ),
             and_(
                 tupleset.object_key == issue.id,
                 tupleset.object_namespace == "issues",
-                tupleset.relation == "parent",
-                RelationTuple.relation == "maintainer",
+                tupleset.object_predicate == "parent",
+                RelationTuple.object_predicate == "maintainer",
                 RelationTuple.object_key == tupleset.subject_key,
                 RelationTuple.object_namespace == tupleset.subject_namespace,
             ),
@@ -198,7 +197,7 @@ def test_api(test_data):
     (session, alice, bob, charlie, acme, eng, anvil, issue) = test_data
     z = Zanzibar(session)
 
-    tuples = z.read(Tupleset(object=acme, relation="admin")).all()
+    tuples = z.read(Tupleset(object=acme, object_predicate="admin")).all()
     assert len(tuples) == 1
     assert tuples[0].subject_key == alice.id
     assert tuples[0].subject_namespace == alice.__tablename__
@@ -326,8 +325,8 @@ def perf_data():
             {
                 "subject_key": org_idx,
                 "subject_namespace": "organizations",
-                "subject_relation": None,
-                "relation": "parent",
+                "subject_predicate": None,
+                "object_predicate": "parent",
                 "object_key": repo_idx,
                 "object_namespace": "repositories",
             }
@@ -350,8 +349,8 @@ def perf_data():
             {
                 "subject_key": repo_idx,
                 "subject_namespace": "repositories",
-                "subject_relation": None,
-                "relation": "parent",
+                "subject_predicate": None,
+                "object_predicate": "parent",
                 "object_key": issue_idx,
                 "object_namespace": "issues",
             }
@@ -386,8 +385,8 @@ def perf_data():
             {
                 "subject_key": user_idx % NUM_USERS,
                 "subject_namespace": "users",
-                "subject_relation": None,
-                "relation": "member",
+                "subject_predicate": None,
+                "object_predicate": "member",
                 "object_key": org_idx,
                 "object_namespace": "organizations",
             }
