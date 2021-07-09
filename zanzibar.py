@@ -1,3 +1,4 @@
+from typing import Tuple
 from polar.variable import Variable
 from sqlalchemy.sql.expression import and_
 from oso import Oso
@@ -49,6 +50,22 @@ class RelationTuple(Base):
     )
 
 
+class Tupleset:
+    def __init__(self, source_relation=None, relation=None, object=None):
+        self.source_relation = source_relation
+        self.relation = relation
+        self.object = object
+
+    def as_filter(self):
+        filter = RelationTuple.object_key == self.object.id
+        filter = RelationTuple.object_namespace == self.object.__tablename__
+        if self.relation:
+            filter &= RelationTuple.relation == self.relation
+        if self.source_relation:
+            filter &= RelationTuple.relation == self.source_relation
+        return filter
+
+
 class Zanzibar:
     def __init__(self, session):
         self.session = session
@@ -57,6 +74,14 @@ class Zanzibar:
         self.oso.register_constant(self, "Z")
         self.oso.load_file("config.polar")
         self.oso.load_file("zanzibar.polar")
+
+    def read(self, *tuplesets):
+        filter = and_(True)
+        for tupleset in tuplesets:
+            assert isinstance(tupleset, Tupleset)
+            filter &= tupleset.as_filter()
+
+        return self.session.query(RelationTuple).filter(filter)
 
     def gen_filter(self, relation, object):
         filter = partial_query(
