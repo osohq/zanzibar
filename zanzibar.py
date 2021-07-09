@@ -3,6 +3,7 @@ from polar.variable import Variable
 from sqlalchemy.sql.elements import or_
 from sqlalchemy.sql.expression import and_
 from oso import Oso
+from sqlalchemy.sql.selectable import CTE
 from sqlalchemy_oso import register_models
 
 from sqlalchemy import Column, Integer, String, select, union_all
@@ -77,9 +78,18 @@ class Zanzibar:
         self.oso.load_file("config.polar")
         self.oso.load_file("zanzibar.polar")
 
-    def read_one(self, object, relation=None, subject_predicate=None):
-        filter = RelationTuple.object_key == object.id
-        filter = RelationTuple.object_namespace == object.__tablename__
+    def _read_one(self, object, relation=None, subject_predicate=None):
+        name = ""
+        if isinstance(object, Base):
+            filter = RelationTuple.object_key == object.id
+            filter = RelationTuple.object_namespace == object.__tablename__
+            name = f"{object.__tablename__}__{relation}"
+        else:
+            # object is a cte?
+            assert isinstance(object, CTE)
+            filter = RelationTuple.object_key == object.c.subject_key
+            filter = RelationTuple.object_namespace == object.c.subject_namespace
+            name = f"{object.name}__{relation}"
 
         # filter by relation if specified
         if relation:
@@ -88,16 +98,40 @@ class Zanzibar:
         # filter by source relation if specified
         if subject_predicate:
             filter &= RelationTuple.object_predicate == subject_predicate
+        direct_tuples = self.session.query(RelationTuple).filter(filter)
 
-        return self.session.query(RelationTuple).filter(filter)
+        cte = direct_tuples.cte(recursive=True, name=name)
+        cte = cte.union(
+            self.session.query(RelationTuple).join(
+                cte,
+                or_(
+                    and_(
+                        cte.c.subject_key == RelationTuple.object_key,
+                        cte.c.subject_namespace == RelationTuple.object_namespace,
+                        cte.c.subject_predicate == RelationTuple.object_predicate,
+                    ),
+                    and_(
+                        cte.c.id == RelationTuple.id,
+                        RelationTuple.subject_predicate == None,
+                    ),
+                ),
+            )
+        )
 
-    def read(self, *tuplesets):
-        filter = and_(False)
-        for tupleset in tuplesets:
-            assert isinstance(tupleset, Tupleset)
-            filter |= tupleset.as_filter()
+        return cte
 
-        return self.session.query(RelationTuple).filter(filter)
+    def read_one(self, object, relation=None, subject_predicate=None):
+        return self.session.query(self._read_one(object, relation, subject_predicate))
+
+    # def check2(self, subject, relation, object):
+
+    # def read(self, *tuplesets):
+    #     filter = and_(False)
+    #     for tupleset in tuplesets:
+    #         assert isinstance(tupleset, Tupleset)
+    #         filter |= tupleset.as_filter()
+
+    #     return self.session.query(RelationTuple).filter(filter)
 
     def gen_filter(self, relation, object):
         filter = partial_query(

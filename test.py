@@ -13,7 +13,7 @@ from zanzibar import *
 
 @pytest.fixture
 def test_data():
-    engine = create_engine("sqlite:///:memory:", echo=False)
+    engine = create_engine("sqlite:///:memory:", echo=True)
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(engine)
 
@@ -197,10 +197,26 @@ def test_api(test_data):
     (session, alice, bob, charlie, acme, eng, anvil, issue) = test_data
     z = Zanzibar(session)
 
-    tuples = z.read(Tupleset(object=acme, object_predicate="admin")).all()
+    # tuples = z.read(Tupleset(object=acme, object_predicate="admin")).all()
+    tuples = z.read_one(object=acme, relation="admin").all()
     assert len(tuples) == 1
     assert tuples[0].subject_key == alice.id
     assert tuples[0].subject_namespace == alice.__tablename__
+
+    issue_owners = z._read_one(object=issue, relation="owner")
+    issue_parents = z._read_one(object=issue, relation="parent")
+    repository_maintainers = z._read_one(object=issue_parents, relation="maintainer")
+    repository_parents = z._read_one(object=issue_parents, relation="parent")
+    organization_admins = z._read_one(object=repository_parents, relation="admin")
+    users = (
+        session.query(issue_owners)
+        .union(
+            session.query(repository_maintainers), session.query(organization_admins)
+        )
+        .all()
+    )
+    # assert len(users) == 2
+    assert set(map(lambda u: u.subject_key, users)) == set([alice.id, bob.id])
 
 
 def test_zanzibar(test_data):
@@ -232,7 +248,7 @@ def test_zanzibar(test_data):
 
 # PERF_DB = "postgresql://postgres@localhost:5432"
 PERF_DB = "sqlite:///relations.db"
-PERF_SCALE = 10
+PERF_SCALE = 1
 
 
 @pytest.mark.skip
