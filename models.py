@@ -10,12 +10,18 @@ class Organization(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String)
 
+    def __repr__(self):
+        return f"Organization<{self.name}>"
+
 
 class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
     name = Column(String)
+
+    def __repr__(self):
+        return f"User<{self.name}>"
 
 
 class Repository(Base):
@@ -25,6 +31,8 @@ class Repository(Base):
     name = Column(String)
     # organization_id = Column(Integer, ForeignKey("organizations.id"))
     # organization = relationship("Organization", backref="repositories", lazy=True)
+    def __repr__(self):
+        return f"Repository<{self.name}>"
 
 
 class Team(Base):
@@ -35,6 +43,9 @@ class Team(Base):
     # organization_id = Column(Integer, ForeignKey("organizations.id"))
     # organization = relationship("Organization", backref="teams", lazy=True)
 
+    def __repr__(self):
+        return f"Team<{self.name}>"
+
 
 class Issue(Base):
     __tablename__ = "issues"
@@ -43,6 +54,9 @@ class Issue(Base):
     title = Column(String)
     body = Column(Text)
     closed = Column(Boolean, default=False)
+
+    def __repr__(self):
+        return f"Issue<{self.title}>"
 
     # repository_id = Column(Integer, ForeignKey("repositories.id"))
     # repository = relationship("Repository", backref="issues", lazy=True)

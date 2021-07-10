@@ -13,7 +13,7 @@ from zanzibar import *
 
 @pytest.fixture
 def test_data():
-    engine = create_engine("sqlite:///:memory:", echo=True)
+    engine = create_engine("sqlite:///:memory:", echo=False)
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(engine)
 
@@ -34,174 +34,24 @@ def test_data():
         [
             RelationTuple.new(alice, "owner", issue),
             RelationTuple.new(acme, "parent", anvil),
-            RelationTuple.new(alice, "admin", acme),
-            RelationTuple.new(alice, "member", eng),
-            RelationTuple.new(eng, "contributor", anvil, subject_predicate="member"),
-            RelationTuple.new(bob, "maintainer", anvil),
             RelationTuple.new(anvil, "parent", issue),
-            RelationTuple.new(charlie, "contributor", anvil),
+            RelationTuple.new(bob, "admin", acme),
+            RelationTuple.new(eng, "maintainer", anvil, subject_predicate="member"),
+            RelationTuple.new(charlie, "member", eng),
         ]
     )
     session.commit()
     return (session, alice, bob, charlie, acme, eng, anvil, issue)
 
 
-def test_manual_query(test_data):
-    (session, alice, bob, charlie, acme, eng, anvil, issue) = test_data
-
-    is_owner = (
-        session.query(RelationTuple)
-        .filter_by(
-            subject_key=alice.id,
-            subject_namespace="users",
-            object_predicate="owner",
-            object_key=issue.id,
-            object_namespace="issues",
-        )
-        .first()
-        is not None
-    )
-    assert is_owner
-
-    issues = aliased(RelationTuple)
-    repos = aliased(RelationTuple)
-    orgs = aliased(RelationTuple)
-    users = aliased(RelationTuple)
-
-    is_org_admin = (
-        session.query(
-            repos,
-            orgs,
-            users,
-        )
-        .filter(
-            # repos that are a parent of this issue
-            repos.object_key == issue.id,
-            repos.object_namespace == "issues",
-            repos.object_predicate == "parent",
-            repos.subject_namespace == "repositories",
-            # orgs that are a parent of the repository
-            orgs.object_namespace == repos.subject_namespace,
-            orgs.object_key == repos.subject_key,
-            orgs.object_predicate == "parent",
-            orgs.subject_namespace == "organizations",
-            # users that are admins of the org
-            users.object_namespace == orgs.subject_namespace,
-            users.object_key == orgs.subject_key,
-            users.object_predicate == "admin",
-            users.subject_namespace == "users",
-            users.subject_key == alice.id,
-        )
-        .first()
-        is not None
-    )
-    assert is_org_admin
-
-    is_org_admin = (
-        session.query(
-            issues,
-            repos,
-            orgs,
-        )
-        .filter(
-            # orgs where user is admin
-            orgs.subject_namespace == "users",
-            orgs.subject_key == alice.id,
-            orgs.object_predicate == "admin",
-            orgs.object_namespace == "organizations",
-            # repos for which the orgs are a parent
-            repos.subject_key == orgs.object_key,
-            repos.subject_namespace == orgs.object_namespace,
-            repos.object_predicate == "parent",
-            repos.object_namespace == "repositories",
-            # issues for which the repos are a parent
-            issues.subject_namespace == repos.object_namespace,
-            issues.subject_key == repos.object_key,
-            issues.object_predicate == "parent",
-            issues.object_namespace == "issues",
-            # match on this specific issue
-            issues.object_key == issue.id,
-        )
-        .first()
-        is not None
-    )
-    assert is_org_admin
-
-    can_close = session.query(
-        RelationTuple.subject_key,
-        RelationTuple.subject_namespace,
-        literal("can_close").label("object_predicate"),
-    ).filter_by(
-        subject_key=alice.id,
-        subject_namespace="users",
-        object_predicate="owner",
-        object_key=issue.id,
-        object_namespace="issues",
-    )
-    assert can_close.first() is not None
-
-    tupleset = aliased(RelationTuple, name="tupleset")
-    can_close2 = session.query(
-        RelationTuple.subject_key,
-        RelationTuple.subject_namespace,
-        literal("can_close").label("object_predicate"),
-    ).filter(
-        tupleset.object_key == issue.id,
-        tupleset.object_namespace == "issues",
-        tupleset.object_predicate == "parent",
-        RelationTuple.object_predicate == "maintainer",
-        RelationTuple.object_key == tupleset.subject_key,
-        RelationTuple.object_namespace == tupleset.subject_namespace,
-        RelationTuple.subject_namespace == "users",
-        RelationTuple.subject_key == bob.id,
-    )
-    assert can_close2.first() is not None
-
-    print(
-        can_close.union(can_close2).statement.compile(
-            compile_kwargs={"literal_binds": True}
-        )
-    )
-    assert can_close.union(can_close2).first() is not None
-
-    can_close3 = session.query(
-        RelationTuple.subject_key,
-        RelationTuple.subject_namespace,
-        literal("can_close").label("object_predicate"),
-    ).filter(
-        or_(
-            and_(
-                RelationTuple.object_predicate == "owner",
-                RelationTuple.object_key == issue.id,
-                RelationTuple.object_namespace == "issues",
-            ),
-            and_(
-                tupleset.object_key == issue.id,
-                tupleset.object_namespace == "issues",
-                tupleset.object_predicate == "parent",
-                RelationTuple.object_predicate == "maintainer",
-                RelationTuple.object_key == tupleset.subject_key,
-                RelationTuple.object_namespace == tupleset.subject_namespace,
-            ),
-        ),
-        RelationTuple.subject_namespace == "users",
-        RelationTuple.subject_key == bob.id,
-    )
-
-    print(can_close3.statement.compile(compile_kwargs={"literal_binds": True}))
-
-    assert can_close3.first() is not None
-
-
 def test_api(test_data):
     (session, alice, bob, charlie, acme, eng, anvil, issue) = test_data
     z = Zanzibar(session)
 
-    # tuples = z.read(Tupleset(object=acme, object_predicate="admin")).all()
     tuples = z.read_one(object=acme, relation="admin").all()
     assert len(tuples) == 1
-    assert tuples[0].subject_key == alice.id
-    assert tuples[0].subject_namespace == alice.__tablename__
+    assert tuples[0].subject_key == bob.id
+    assert tuples[0].subject_namespace == bob.__tablename__
 
     issue_owners = z._read_one(object=issue, relation="owner")
     issue_parents = z._read_one(object=issue, relation="parent")
@@ -210,15 +60,38 @@ def test_api(test_data):
     organization_admins = z._read_one(object=repository_parents, relation="admin")
     users = (
         session.query(issue_owners)
+        .filter_by(subject_namespace="users")
         .union(
-            session.query(repository_maintainers), session.query(organization_admins)
+            session.query(repository_maintainers).filter_by(subject_namespace="users"),
+            session.query(organization_admins).filter_by(subject_namespace="users"),
         )
         .all()
     )
-    # assert len(users) == 2
-    assert set(map(lambda u: u.subject_key, users)) == set([alice.id, bob.id])
+    assert set(map(lambda u: u.subject_key, users)) == set(
+        [alice.id, bob.id, charlie.id]
+    )
+
+    assert set(map(lambda u: u.subject_key, session.query(issue_owners))) == set(
+        [alice.id]
+    )
+    assert (
+        set(
+            map(
+                lambda u: u.subject_key,
+                session.query(repository_maintainers).filter_by(
+                    subject_namespace="users"
+                ),
+            )
+        )
+        == set([charlie.id])
+    )
+
+    assert set(map(lambda u: u.subject_key, session.query(organization_admins))) == set(
+        [bob.id]
+    )
 
 
+@pytest.mark.skip(reason="old test")
 def test_zanzibar(test_data):
     (session, alice, bob, charlie, acme, eng, anvil, issue) = test_data
     z = Zanzibar(session)
@@ -227,7 +100,7 @@ def test_zanzibar(test_data):
     assert set([acme]) == set(z.expand(Organization, "parent", anvil))
 
     # what users are members of Anvil
-    assert set([alice, bob, charlie]) == set(z.expand(User, "contributor", anvil))
+    assert set([bob, charlie]) == set(z.expand(User, "contributor", anvil))
 
     # alice has the org admin relation (to acme)
     assert z.check(alice, "admin", acme)

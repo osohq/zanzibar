@@ -104,16 +104,10 @@ class Zanzibar:
         cte = cte.union(
             self.session.query(RelationTuple).join(
                 cte,
-                or_(
-                    and_(
-                        cte.c.subject_key == RelationTuple.object_key,
-                        cte.c.subject_namespace == RelationTuple.object_namespace,
-                        cte.c.subject_predicate == RelationTuple.object_predicate,
-                    ),
-                    and_(
-                        cte.c.id == RelationTuple.id,
-                        RelationTuple.subject_predicate == None,
-                    ),
+                and_(
+                    cte.c.subject_key == RelationTuple.object_key,
+                    cte.c.subject_namespace == RelationTuple.object_namespace,
+                    cte.c.subject_predicate == RelationTuple.object_predicate,
                 ),
             )
         )
@@ -121,7 +115,9 @@ class Zanzibar:
         return cte
 
     def read_one(self, object, relation=None, subject_predicate=None):
-        return self.session.query(self._read_one(object, relation, subject_predicate))
+        return self.session.query(
+            self._read_one(object, relation, subject_predicate)
+        ).filter_by(subject_predicate=None, subject_namespace="users")
 
     # def check2(self, subject, relation, object):
 
