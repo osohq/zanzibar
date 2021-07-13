@@ -1,25 +1,20 @@
-# assigned has relation_type to resource if
-# assigned has a relation which matches the
-# type and resource
-assigned(tuple: RelationTuple, relation_type, resource) if
-    relation(resource, relation_type, "this") and
-    tuple.object_predicate = relation_type and # relation = "contributor"
-    tuple.object_namespace = resource.__tablename__ and # object_namespace = "repositories"
-    tuple.subject_predicate = nil and # should not a relative relation
-    tuple.object_key = resource.id; # object_key = 1
+# direct relation
+relationship(subject, predicate, {object: object, namespace: namespace}) if
+    relation(namespace, predicate, "this") and
+    subject = Z._read(object: object, relation: predicate);
 
-# this is "computed_userset" 
-assigned(tuple: RelationTuple, relation_type, resource) if
-    relation(resource, relation_type, {relation: parent_relation}) and
-    assigned(tuple, parent_relation, resource);
+# computed_userset
+relationship(subject, implied_predicate, object) if
+    relation(object.namespace, implied_predicate, {relation: predicate}) and
+    relationship(subject, predicate, object);
 
-# this is the "tupleset_to_userset"
-assigned(tuple: RelationTuple, relation_type, resource) if
-    relation(resource, relation_type, { parent: {
-        resource: parent_resource_type,
-        relation: parent_resource_relation
-    }, relation: relation_to_parent }) and
-    parent in Z.expand(parent_resource_type, parent_resource_relation, resource) and
-    assigned(tuple, relation_to_parent, parent);
+# tuple_to_userset
+relationship(subject, implied_predicate, object) if
+    relation(object.namespace, implied_predicate, { parent: {
+        resource: tupleset_namespace,
+        relation: object_predicate
+    }, relation: subject_predicate }) and
+    relationship(tupleset, object_predicate, object) and
+    relationship(subject, subject_predicate, {object: tupleset, namespace: tupleset_namespace});
 
-relation(resource, relation_type, "this") if relation(resource, relation_type);
+relation(resource, predicate, "this") if relation(resource, predicate);

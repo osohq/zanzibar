@@ -1,32 +1,33 @@
-relation(_: Organization, "admin");
-relation(_: Organization, "member", child) if
+relation("organizations", "admin");
+relation("organizations", "member", child) if
     child in [
         "this",
         { relation: "admin" }
     ];
 
-relation(_: Repository, "parent");
-relation(_: Repository, "maintainer", child) if
+relation("repositories", "parent");
+relation("repositories", "maintainer",  child) if
     child in [
         "this",
-        { parent: { resource: Organization, relation: "parent" }, relation: "admin"}
+        { parent: { resource: "organizations", relation: "parent" }, relation: "admin"}
     ];
-
-relation(_: Repository, "contributor", child) if
+relation("repositories", "contributor", child) if
     child in [
         "this",
         { relation: "maintainer" },
         { 
-            parent: { resource: Organization, relation: "parent" },
+            parent: { resource: "organizations", relation: "parent" },
             relation: "member"
         }
     ];
 
-relation(_: Issue, "parent");
-relation(
-    _: Issue, "permission:close",
-    {
-        parent: { resource: Repository, relation: "parent" },
-        relation: "contributor"
-    }
-);
+relation("issues", "owner");
+relation("issues", "parent");
+relation("issues", "permission:close", child) if 
+    child in [
+        { relation: "owner"},
+        {
+            parent: { resource: "repositories", relation: "parent" },
+            relation: "contributor"
+        }
+    ];

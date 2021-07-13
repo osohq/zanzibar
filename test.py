@@ -48,28 +48,17 @@ def test_api(test_data):
     (session, alice, bob, charlie, acme, eng, anvil, issue) = test_data
     z = Zanzibar(session)
 
-    tuples = z.read_one(object=acme, relation="admin").all()
+    tuples = z.read(object=acme, relation="admin").all()
     assert len(tuples) == 1
     assert tuples[0].subject_key == bob.id
     assert tuples[0].subject_namespace == bob.__tablename__
 
-    issue_owners = z._read_one(object=issue, relation="owner")
-    issue_parents = z._read_one(object=issue, relation="parent")
-    repository_maintainers = z._read_one(object=issue_parents, relation="maintainer")
-    repository_parents = z._read_one(object=issue_parents, relation="parent")
-    organization_admins = z._read_one(object=repository_parents, relation="admin")
-    users = (
-        session.query(issue_owners)
-        .filter_by(subject_namespace="users")
-        .union(
-            session.query(repository_maintainers).filter_by(subject_namespace="users"),
-            session.query(organization_admins).filter_by(subject_namespace="users"),
-        )
-        .all()
-    )
-    assert set(map(lambda u: u.subject_key, users)) == set(
-        [alice.id, bob.id, charlie.id]
-    )
+    issue_owners = z._read(object=issue, relation="owner")
+    issue_parents = z._read(object=issue, relation="parent")
+
+    repository_maintainers = z._read(object=issue_parents, relation="maintainer")
+    repository_parents = z._read(object=issue_parents, relation="parent")
+    organization_admins = z._read(object=repository_parents, relation="admin")
 
     assert set(map(lambda u: u.subject_key, session.query(issue_owners))) == set(
         [alice.id]
@@ -89,6 +78,10 @@ def test_api(test_data):
     assert set(map(lambda u: u.subject_key, session.query(organization_admins))) == set(
         [bob.id]
     )
+
+    assert z.check(alice, "permission:close", issue)
+    users = z.expand(User, "permission:close", issue)
+    assert set(users) == set([alice, bob, charlie])
 
 
 @pytest.mark.skip(reason="old test")
@@ -119,12 +112,12 @@ def test_zanzibar(test_data):
     assert z.check(bob, "permission:close", issue)
 
 
-# PERF_DB = "postgresql://postgres@localhost:5432"
-PERF_DB = "sqlite:///relations.db"
-PERF_SCALE = 1
+PERF_DB = "postgresql://postgres:password@localhost:5432"
+# PERF_DB = "sqlite:///relations.db"
+PERF_SCALE = 10
 
 
-@pytest.mark.skip
+# @pytest.mark.skip
 def test_perf():
     engine = create_engine(PERF_DB, echo=False)
     Session = sessionmaker(bind=engine)
@@ -180,37 +173,41 @@ def perf_data():
 
     # Create 5k users
     session.bulk_insert_mappings(
-        User, [{"name": f"user_{i}"} for i in range(NUM_USERS)]
+        User, iter({"name": f"user_{i}"} for i in range(1, NUM_USERS + 1))
     )
     session.commit()
+    print(f"Inserted {NUM_USERS} users")
 
     # Create 100 orgs
     session.bulk_insert_mappings(
-        Organization, [{"name": f"org_{i}"} for i in range(NUM_ORGS)]
+        Organization, iter({"name": f"org_{i}"} for i in range(1, NUM_ORGS + 1))
     )
     session.commit()
+    print(f"Inserted {NUM_ORGS} organizations")
 
     # Create 1k repositories
     session.bulk_insert_mappings(
-        Repository, [{"name": f"repo_{i}"} for i in range(NUM_REPOS)]
+        Repository, iter({"name": f"repo_{i}"} for i in range(1, NUM_REPOS + 1))
     )
     session.commit()
+    print(f"Inserted {NUM_REPOS} repositories")
 
     # Create 20k issues
     session.bulk_insert_mappings(
-        Issue, [{"title": f"issue_{i}"} for i in range(NUM_ISSUES)]
+        Issue, iter({"title": f"issue_{i}"} for i in range(1, NUM_ISSUES + 1))
     )
     session.commit()
+    print(f"Inserted {NUM_ISSUES} issues")
 
     # assign each repo to an org
     repo_orgs = choices(
-        range(NUM_ORGS),
+        range(1, NUM_ORGS + 1),
         [100] * (NUM_ORGS // 10) + [10] * (NUM_ORGS // 10) + [1] * (NUM_ORGS // 10) * 8,
         k=NUM_REPOS,
     )
     session.bulk_insert_mappings(
         RelationTuple,
-        [
+        iter(
             {
                 "subject_key": org_idx,
                 "subject_namespace": "organizations",
@@ -220,13 +217,14 @@ def perf_data():
                 "object_namespace": "repositories",
             }
             for repo_idx, org_idx in enumerate(repo_orgs)
-        ],
+        ),
     )
     session.commit()
+    print(f"Inserted {NUM_REPOS} repo-org relationships")
 
     # assign each issue to a repo
     issue_repo = choices(
-        range(NUM_REPOS),
+        range(1, NUM_REPOS + 1),
         [100] * (NUM_REPOS // 10)
         + [10] * (NUM_REPOS // 10)
         + [1] * (NUM_REPOS // 10) * 8,
@@ -234,7 +232,7 @@ def perf_data():
     )
     session.bulk_insert_mappings(
         RelationTuple,
-        [
+        iter(
             {
                 "subject_key": repo_idx,
                 "subject_namespace": "repositories",
@@ -244,16 +242,16 @@ def perf_data():
                 "object_namespace": "issues",
             }
             for issue_idx, repo_idx in enumerate(issue_repo)
-        ],
+        ),
     )
     session.commit()
 
     # assign each user to an org
     #  each user belongs to 10-50 organizations
     user_orgs = choices(
-        range(NUM_ORGS),
+        range(1, NUM_ORGS + 1),
         [100] * (NUM_ORGS // 10) + [10] * (NUM_ORGS // 10) + [1] * (NUM_ORGS // 10) * 8,
-        k=NUM_USERS * 5 * PERF_SCALE,
+        k=NUM_USERS * 5,
     )
     # half the users belong to just 1 org
     # 5% belong to 5 orgs
@@ -266,11 +264,11 @@ def perf_data():
             5 * PERF_SCALE,
         ],
         [10, 3, 3, 3, 1],
-        k=NUM_USERS * 5 * PERF_SCALE,
+        k=NUM_USERS * 5,
     )
     session.bulk_insert_mappings(
         RelationTuple,
-        [
+        iter(
             {
                 "subject_key": user_idx % NUM_USERS,
                 "subject_namespace": "users",
@@ -281,9 +279,10 @@ def perf_data():
             }
             for user_idx, org_idx in enumerate(user_orgs)
             if user_idx // NUM_USERS < user_org_number[user_idx % NUM_USERS]
-        ],
+        ),
     )
     session.commit()
+    print(f"Inserted ~{2 * NUM_USERS * 5 * PERF_SCALE} user-org relationships")
 
     #### Total relationships:
     # 1000 repo-org
