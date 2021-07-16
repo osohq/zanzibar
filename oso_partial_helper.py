@@ -1,7 +1,6 @@
-from polar.variable import Variable
 from polar.partial import TypeConstraint
+from polar.variable import Variable
 from sqlalchemy import sql
-
 from sqlalchemy_oso.partial import partial_to_filter
 
 

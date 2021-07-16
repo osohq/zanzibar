@@ -1,6 +1,7 @@
-import pytest
 import timeit
 from random import choices
+
+import pytest
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.util import aliased
