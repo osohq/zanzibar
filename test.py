@@ -4,9 +4,6 @@ from random import choices
 import pytest
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm.util import aliased
-from sqlalchemy.sql.elements import literal, or_
-from sqlalchemy.sql.expression import case, union
 
 from models import *
 from zanzibar import *

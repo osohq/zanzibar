@@ -1,11 +1,7 @@
-from typing import Tuple
-
 from oso import Oso
 from polar.variable import Variable
-from sqlalchemy import Column, Integer, String, select, union_all
-from sqlalchemy.orm import relationship
-from sqlalchemy.sql.elements import literal, or_
-from sqlalchemy.sql.expression import and_, false, union
+from sqlalchemy import Column, Integer, String
+from sqlalchemy.sql.expression import and_, union
 from sqlalchemy.sql.schema import Index
 from sqlalchemy.sql.selectable import CTE
 from sqlalchemy_oso import register_models
