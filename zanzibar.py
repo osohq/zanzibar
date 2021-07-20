@@ -13,9 +13,10 @@ class RelationTuple(Base):
     __tablename__ = "relations"
 
     id = Column(Integer, primary_key=True)
-    subject_predicate = Column(String, nullable=True)
-    subject_key = Column(Integer)
-    subject_namespace = Column(String)
+
+    subject_predicate = Column(String, nullable=True)  # member
+    subject_key = Column(Integer)  # 1
+    subject_namespace = Column(String)  # team
 
     object_predicate = Column(String)
     object_key = Column(Integer)
@@ -48,22 +49,6 @@ class RelationTuple(Base):
         Index("subject_predicate_idx", subject_predicate),
         Index("object_predicate_idx", object_predicate),
     )
-
-
-class Tupleset:
-    def __init__(self, subject_predicate=None, object_predicate=None, object=None):
-        self.subject_predicate = subject_predicate
-        self.object_predicate = object_predicate
-        self.object = object
-
-    def as_filter(self):
-        filter = RelationTuple.object_key == self.object.id
-        filter = RelationTuple.object_namespace == self.object.__tablename__
-        if self.object_predicate:
-            filter &= RelationTuple.object_predicate == self.object_predicate
-        if self.subject_predicate:
-            filter &= RelationTuple.object_predicate == self.subject_predicate
-        return filter
 
 
 class Zanzibar:
