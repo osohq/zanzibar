@@ -1,3 +1,4 @@
+from oso_partial_helper import partial_query
 from oso import Oso
 from polar.variable import Variable
 from sqlalchemy import Column, Integer, String
@@ -5,6 +6,7 @@ from sqlalchemy.sql.expression import and_, union
 from sqlalchemy.sql.schema import Index
 from sqlalchemy.sql.selectable import CTE
 from sqlalchemy_oso import register_models
+from sqlalchemy_oso.auth import authorize_model
 
 from models import Base, User
 
@@ -126,3 +128,32 @@ class Zanzibar:
         q = self._expand(model, relation, object)
         userset = self.session.query(model).filter(model.id.in_(q))
         return userset
+
+
+class OsoZanzibar:
+    def __init__(self, session):
+        self.session = session
+        self.oso = Oso()
+        register_models(self.oso, Base)
+        self.oso.register_constant(self, "Z")
+        self.oso.load_file("config_oso.polar")
+        self.oso.load_file("zanzibar_oso.polar")
+        self.cte_counter = 0
+
+    def check(self, user, relation, object):
+        return (
+            self.expand(User, relation, object).filter_by(id=user.id).first()
+            is not None
+        )
+
+    def expand(self, model, relation, object):
+        query_filter = partial_query(
+            self.oso,
+            self.session,
+            "allow",
+            relation,
+            object,
+            subject=model,
+        )
+
+        return self.session.query(model).filter(query_filter)

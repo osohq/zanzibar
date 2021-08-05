@@ -21,11 +21,11 @@ relation("repositories", "contributor", child) if
         }
     ];
 
-relation("issues", "owner");
+relation("issues", "reporter");
 relation("issues", "parent");
 relation("issues", "permission:close", child) if 
     child in [
-        { relation: "owner"},
+        { relation: "reporter"},
         {
             parent: { resource: "repositories", relation: "parent" },
             relation: "contributor"
